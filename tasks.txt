@@ -1,0 +1,2 @@
+1. convert to video +
+2. add motion adaptiveness to changes - 5 sec still interval check and update background
