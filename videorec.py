@@ -3,10 +3,14 @@ import cv2, datetime, pandas, re, os, sys
 class VideoRecorder:
     def __init__(self):
         # set up dir
-        self.rec_dir_name = "rec_" + re.sub('[^a-zA-Z0-9 \n\.]', '', str(datetime.datetime.now()))
+        self.rec_dir_name = "rec_" + self.__get_str_for_now()
         self.motion_start = None
         self.motion_log = []
         self.motion_frames = []
+
+
+    def __get_str_for_now(self):
+        return re.sub('[^a-zA-Z0-9 \n\.]', '', str(datetime.datetime.now()))
 
     def __create_recording_dir(self):
         try:
@@ -20,9 +24,10 @@ class VideoRecorder:
 
     def __write_motion_episode(self, start, frames):
         # filename generation
-        rec_file_name = self.rec_dir_name+"/rec_" + re.sub('[^a-zA-Z0-9 \n\.]', '', str(start))+".avi"
+        rec_file_name = self.rec_dir_name+"/rec_" + self.__get_str_for_now()+".avi"
 
         print(rec_file_name)
+        print(frames)
         print(frames[0])
         height, width, layers = frames[0].shape
         size = (width, height)
@@ -37,9 +42,11 @@ class VideoRecorder:
         # set up recording
         self.__setup_recording()
 
+        motion_not_detected_start = None
+
         while self.video_in_progress:
 
-            motion_detected = False
+            # motion_detected = False
 
             #
 
@@ -63,31 +70,42 @@ class VideoRecorder:
 
             # when motion detected
             # draw countour around moving objects
-            for contour in contours:
-                if cv2.contourArea(contour) < 10000:
-                    continue
-                # check if motion started
-                if self.motion_start is None:
-                    self.motion_start = datetime.datetime.now()
-                self.background_same_motion_start_time = self.motion_start
-                motion_detected = True
-                (x, y, w, h) = cv2.boundingRect(contour)
-                cv2.rectangle(img=frame, pt1=(x, y), pt2=(x + w, y + h), color=(0, 255, 0), thickness=3)
+            motion_detected, self.motion_start, self.background_same_motion_start_time = self.__draw_countours(contours,
+                                                                                                               frame,
+                                                                                                               self.motion_start,
+                                                                                                               self.background_same_motion_start_time)
+            # for contour in contours:
+            #     if cv2.contourArea(contour) < 10000:
+            #         continue
+            #     # check if motion started
+            #     if self.motion_start is None:
+            #         self.motion_start = datetime.datetime.now()
+            #     self.background_same_motion_start_time = self.motion_start
+            #     motion_detected = True
+            #     (x, y, w, h) = cv2.boundingRect(contour)
+            #     cv2.rectangle(img=frame, pt1=(x, y), pt2=(x + w, y + h), color=(0, 255, 0), thickness=3)
 
             # check if motion stopped
             if not motion_detected and not self.motion_start is None:
-                self.motion_log, self.motion_start, self.motion_frames = self.__end_motion_episode_recording(self.motion_log, self.motion_start, self.motion_frames)
+                if motion_not_detected_start is None:
+                    motion_not_detected_start = datetime.datetime.now()
+                sec_from_motion_end = (
+                            datetime.datetime.now() - motion_not_detected_start).total_seconds()
+                if (sec_from_motion_end>1):
+                    motion_not_detected_start = None
+                    self.motion_log, self.motion_start, self.motion_frames = self.__end_motion_episode_recording(self.motion_log, self.motion_start, self.motion_frames)
 
 
             # if motion is detected add frame to motion
             if motion_detected:
                 self.motion_frames.append(frame)
+
                 # check if motion is fake, like background changed
 
                 # update background frame with it
                 # if movement is 5sec, compare this frame with first moving frame
-                sec_from_motion_start = (datetime.datetime.now()-self.background_same_motion_start_time).total_seconds()
-                if(sec_from_motion_start>5):
+                sec_from_motion_start = (datetime.datetime.now()-self.motion_start).total_seconds()
+                if(sec_from_motion_start>2):
                     # and if it is the same and all in moving frame are too
                     if (self.__are_frames_same(frame, self.motion_frames[0])):
                         motion_frames_same_5_sec = True
@@ -101,6 +119,7 @@ class VideoRecorder:
                             gray_frame = cv2.cvtColor(src=frame, code=cv2.COLOR_RGB2GRAY)
                             gray_frame = cv2.GaussianBlur(src=gray_frame, ksize=(21, 21), sigmaX=0)
                             background_frame = gray_frame
+                            cv2.imwrite(self.rec_dir_name+"\newbg_"+self.__get_str_for_now(), frame)
                             self.background_same_motion_start_time = datetime.datetime.now()
                             self.motion_log, self.motion_start, self.motion_frames = self.__end_motion_episode_recording(self.motion_log, self.motion_start, self.motion_frames)
 
@@ -109,10 +128,7 @@ class VideoRecorder:
 
                 
             # show videos
-            cv2.imshow("Video", gray_frame)
-            cv2.imshow("Delta", delta_frame)
-            cv2.imshow("Threshhold", threshhold_delta_frame)
-            cv2.imshow("Motion", frame)
+            self.__show_videos(gray_frame, delta_frame, threshhold_delta_frame, frame)
             
             # check for end trigger
             key = cv2.waitKey(1)
@@ -128,14 +144,38 @@ class VideoRecorder:
         # print(motions)
         
         # save log to file
+        self.__finalize_recording(self.motion_log, self.video)
+
+
+    def __draw_countours(self, contours, frame, motion_start, background_same_motion_start_time):
+        motion_detected = False
+        for contour in contours:
+            if cv2.contourArea(contour) < 10000:
+                continue
+            # check if motion started
+            if motion_start is None:
+                motion_start = datetime.datetime.now()
+            background_same_motion_start_time = self.motion_start
+            motion_detected = True
+            (x, y, w, h) = cv2.boundingRect(contour)
+            cv2.rectangle(img=frame, pt1=(x, y), pt2=(x + w, y + h), color=(0, 255, 0), thickness=3)
+        return motion_detected, motion_start, background_same_motion_start_time
+
+    def __show_videos(self, gray_frame, delta_frame, threshhold_delta_frame, frame):
+        cv2.imshow("Video", gray_frame)
+        cv2.imshow("Delta", delta_frame)
+        cv2.imshow("Threshhold", threshhold_delta_frame)
+        cv2.imshow("Motion", frame)
+
+    def __finalize_recording(self, motion_log, video):
         df = pandas.DataFrame(columns=["Start", "End"])
-        for motion in self.motion_log:
+        for motion in motion_log:
             print(motion)
             df = df.append(motion, ignore_index=True)
         print(df)
-        df.to_csv(self.rec_dir_name+ "\motions.csv")
-        
-        self.video.release()
+        df.to_csv(self.rec_dir_name + "\motions.csv")
+
+        video.release()
         cv2.destroyAllWindows()
 
     def __setup_recording(self):

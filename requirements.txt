@@ -1,3 +1,6 @@
 if there is no motion in 5 seconds - consider it new background
 create new folder for each run
 write  each motion in separate video file
+if motion is stopped for 1 sec consider it new motion, if mless - same motion
+
+

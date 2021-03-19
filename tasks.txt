@@ -1,2 +1,4 @@
 1. convert to video +
 2. add motion adaptiveness to changes - 5 sec still interval check and update background
+3. Print new background every time
+4. Refactor code so each function would have only 5-15 lines
