@@ -45,11 +45,6 @@ class VideoRecorder:
         motion_not_detected_start = None
 
         while self.video_in_progress:
-
-            # motion_detected = False
-
-            #
-
             self.video_in_progress, frame = self.video.read()
             gray_frame = cv2.cvtColor(src=frame, code=cv2.COLOR_RGB2GRAY)
             gray_frame = cv2.GaussianBlur(src=gray_frame, ksize=(21, 21), sigmaX=0)
@@ -91,7 +86,7 @@ class VideoRecorder:
             self.background_same_motion_start_time, \
             self.motion_log, \
             self.motion_start,\
-            self.motion_frames       = self.__motion_detected(
+            self.motion_frames = self.__motion_detected(
                 motion_detected,
                 frame,
                 self.motion_start,
@@ -100,54 +95,30 @@ class VideoRecorder:
                 self.background_same_motion_start_time,
                 self.motion_log)
 
-            # if motion_detected:
-            #     self.motion_frames.append(frame)
-            #
-            #     # check if motion is fake, like background changed
-            #
-            #     # update background frame with it
-            #     # if movement is 5sec, compare this frame with first moving frame
-            #     sec_from_motion_start = (datetime.datetime.now()-self.motion_start).total_seconds()
-            #     if(sec_from_motion_start>2):
-            #         # and if it is the same and all in moving frame are too
-            #         if (self.__are_frames_same(frame, self.motion_frames[0])):
-            #             motion_frames_same_5_sec = True
-            #             for motion_frame in self.motion_frames:
-            #                 if not self.__are_frames_same(frame, motion_frame):
-            #                     same_background_start_time = datetime.datetime.now()
-            #                     motion_frames_same_5_sec = False
-            #                     break
-            #             # if frames did not change during last 5 seconds, update background frame
-            #             if motion_frames_same_5_sec:
-            #                 gray_frame = cv2.cvtColor(src=frame, code=cv2.COLOR_RGB2GRAY)
-            #                 gray_frame = cv2.GaussianBlur(src=gray_frame, ksize=(21, 21), sigmaX=0)
-            #                 background_frame = gray_frame
-            #                 cv2.imwrite(self.rec_dir_name+"\newbg_"+self.__get_str_for_now(), frame)
-            #                 self.background_same_motion_start_time = datetime.datetime.now()
-            #                 self.motion_log, self.motion_start, self.motion_frames = self.__end_motion_episode_recording(self.motion_log, self.motion_start, self.motion_frames)
-            #
-
-
-
-                
             # show videos
             self.__show_videos(gray_frame, delta_frame, threshhold_delta_frame, frame)
             
             # check for end trigger
-            key = cv2.waitKey(1)
-            if key == ord('q'):
-                # check for last motion
-                if not self.motion_start is None:
-                    self.motion_log, self.motion_start, self.motion_frames =  self.__end_motion_episode_recording(self.motion_log,
-                                                                                                                  self.motion_start,
-                                                                                                                  self.motion_frames)
+            stop_recording, self.motion_log, self.motion_start, self.motion_frames = self.__stop_check(self.motion_log, self.motion_start, self.motion_frames)
+            if stop_recording:
                 break
-            # print(motion_detected)
 
         # print(motions)
         
         # save log to file
         self.__finalize_recording(self.motion_log, self.video)
+
+    def __stop_check(self, motion_log, motion_start, motion_frames):
+        key = cv2.waitKey(1)
+        if key == ord('q'):
+            # check for last motion
+            if not self.motion_start is None:
+                motion_log, motion_start, motion_frames = self.__end_motion_episode_recording(
+                    motion_log,
+                    motion_start,
+                    motion_frames)
+            return True, motion_log, motion_start, motion_frames
+        return False, motion_log, motion_start, motion_frames
 
     def __motion_detected(self,
                           motion_detected,
