@@ -74,16 +74,6 @@ class VideoRecorder:
                                                                                                                frame,
                                                                                                                self.motion_start,
                                                                                                                self.background_same_motion_start_time)
-            # for contour in contours:
-            #     if cv2.contourArea(contour) < 10000:
-            #         continue
-            #     # check if motion started
-            #     if self.motion_start is None:
-            #         self.motion_start = datetime.datetime.now()
-            #     self.background_same_motion_start_time = self.motion_start
-            #     motion_detected = True
-            #     (x, y, w, h) = cv2.boundingRect(contour)
-            #     cv2.rectangle(img=frame, pt1=(x, y), pt2=(x + w, y + h), color=(0, 255, 0), thickness=3)
 
             # check if motion stopped
             if not motion_detected and not self.motion_start is None:
@@ -97,32 +87,45 @@ class VideoRecorder:
 
 
             # if motion is detected add frame to motion
-            if motion_detected:
-                self.motion_frames.append(frame)
+            self.background_frame, \
+            self.background_same_motion_start_time, \
+            self.motion_log, \
+            self.motion_start,\
+            self.motion_frames       = self.__motion_detected(
+                motion_detected,
+                frame,
+                self.motion_start,
+                self.motion_frames,
+                self.background_frame,
+                self.background_same_motion_start_time,
+                self.motion_log)
 
-                # check if motion is fake, like background changed
-
-                # update background frame with it
-                # if movement is 5sec, compare this frame with first moving frame
-                sec_from_motion_start = (datetime.datetime.now()-self.motion_start).total_seconds()
-                if(sec_from_motion_start>2):
-                    # and if it is the same and all in moving frame are too
-                    if (self.__are_frames_same(frame, self.motion_frames[0])):
-                        motion_frames_same_5_sec = True
-                        for motion_frame in self.motion_frames:
-                            if not self.__are_frames_same(frame, motion_frame):
-                                same_background_start_time = datetime.datetime.now()
-                                motion_frames_same_5_sec = False
-                                break
-                        # if frames did not change during last 5 seconds, update background frame
-                        if motion_frames_same_5_sec:
-                            gray_frame = cv2.cvtColor(src=frame, code=cv2.COLOR_RGB2GRAY)
-                            gray_frame = cv2.GaussianBlur(src=gray_frame, ksize=(21, 21), sigmaX=0)
-                            background_frame = gray_frame
-                            cv2.imwrite(self.rec_dir_name+"\newbg_"+self.__get_str_for_now(), frame)
-                            self.background_same_motion_start_time = datetime.datetime.now()
-                            self.motion_log, self.motion_start, self.motion_frames = self.__end_motion_episode_recording(self.motion_log, self.motion_start, self.motion_frames)
-
+            # if motion_detected:
+            #     self.motion_frames.append(frame)
+            #
+            #     # check if motion is fake, like background changed
+            #
+            #     # update background frame with it
+            #     # if movement is 5sec, compare this frame with first moving frame
+            #     sec_from_motion_start = (datetime.datetime.now()-self.motion_start).total_seconds()
+            #     if(sec_from_motion_start>2):
+            #         # and if it is the same and all in moving frame are too
+            #         if (self.__are_frames_same(frame, self.motion_frames[0])):
+            #             motion_frames_same_5_sec = True
+            #             for motion_frame in self.motion_frames:
+            #                 if not self.__are_frames_same(frame, motion_frame):
+            #                     same_background_start_time = datetime.datetime.now()
+            #                     motion_frames_same_5_sec = False
+            #                     break
+            #             # if frames did not change during last 5 seconds, update background frame
+            #             if motion_frames_same_5_sec:
+            #                 gray_frame = cv2.cvtColor(src=frame, code=cv2.COLOR_RGB2GRAY)
+            #                 gray_frame = cv2.GaussianBlur(src=gray_frame, ksize=(21, 21), sigmaX=0)
+            #                 background_frame = gray_frame
+            #                 cv2.imwrite(self.rec_dir_name+"\newbg_"+self.__get_str_for_now(), frame)
+            #                 self.background_same_motion_start_time = datetime.datetime.now()
+            #                 self.motion_log, self.motion_start, self.motion_frames = self.__end_motion_episode_recording(self.motion_log, self.motion_start, self.motion_frames)
+            #
 
 
 
@@ -146,6 +149,46 @@ class VideoRecorder:
         # save log to file
         self.__finalize_recording(self.motion_log, self.video)
 
+    def __motion_detected(self,
+                          motion_detected,
+                          frame,
+                          motion_start,
+                          motion_frames,
+                          background_frame,
+                          background_same_motion_start_time,
+                          motion_log):
+        if motion_detected:
+            self.motion_frames.append(frame)
+
+            # check if motion is fake, like background changed
+
+            # update background frame with it
+            # if movement is 5sec, compare this frame with first moving frame
+            sec_from_motion_start = (datetime.datetime.now() - motion_start).total_seconds()
+            if (sec_from_motion_start > 2):
+                # and if it is the same and all in moving frame are too
+                if (self.__are_frames_same(frame, motion_frames[0])):
+                    motion_frames_same_5_sec = True
+                    for motion_frame in motion_frames:
+                        if not self.__are_frames_same(frame, motion_frame):
+                            same_background_start_time = datetime.datetime.now()
+                            motion_frames_same_5_sec = False
+                            break
+                    # if frames did not change during last 5 seconds, update background frame
+                    if motion_frames_same_5_sec:
+                        gray_frame = cv2.cvtColor(src=frame, code=cv2.COLOR_RGB2GRAY)
+                        gray_frame = cv2.GaussianBlur(src=gray_frame, ksize=(21, 21), sigmaX=0)
+                        background_frame = gray_frame
+                        cv2.imwrite(self.rec_dir_name + "\newbg_" + self.__get_str_for_now(), frame)
+                        background_same_motion_start_time = datetime.datetime.now()
+                        motion_log, motion_start, motion_frames = self.__end_motion_episode_recording(
+                            self.motion_log, self.motion_start, motion_frames)
+
+        return background_frame, \
+               background_same_motion_start_time, \
+               motion_log, \
+               motion_start, \
+               motion_frames
 
     def __draw_countours(self, contours, frame, motion_start, background_same_motion_start_time):
         motion_detected = False
