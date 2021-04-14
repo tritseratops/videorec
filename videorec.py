@@ -46,29 +46,44 @@ class VideoRecorder:
 
         while self.video_in_progress:
             self.video_in_progress, frame = self.video.read()
-            gray_frame = cv2.cvtColor(src=frame, code=cv2.COLOR_RGB2GRAY)
-            gray_frame = cv2.GaussianBlur(src=gray_frame, ksize=(21, 21), sigmaX=0)
+
+            # draw contours
+            gray_frame = self.__get_gray_gaussian_blur_frame(frame)
+
             if self.background_frame is None:
                 self.background_frame = gray_frame
                 continue
+            else:
+                # when motion detected
+                # draw countour around moving objects
+                motion_detected,\
+                self.motion_start,\
+                self.background_same_motion_start_time,\
+                    delta_frame,\
+                    threshhold_delta_frame= self.__draw_countours(
+                    frame,
+                    gray_frame,
+                    self.motion_start,
+                    self.background_same_motion_start_time,
+                    self.background_frame)
 
-            delta_frame = cv2.absdiff(self.background_frame, gray_frame)
 
-            sug_thresh, threshhold_delta_frame = cv2.threshold(src=delta_frame, thresh=30, maxval=25,
-                                                               type=cv2.THRESH_BINARY)
+            # if self.background_frame is None:
+            #     self.background_frame = gray_frame
+            #     continue
+            #
+            # delta_frame = cv2.absdiff(self.background_frame, gray_frame)
+            #
+            # _, threshhold_delta_frame = cv2.threshold(src=delta_frame, thresh=30, maxval=25,
+            #                                                    type=cv2.THRESH_BINARY)
+            #
+            # # smooth delta
+            # threshhold_delta_frame = cv2.dilate(src=threshhold_delta_frame, kernel=None, iterations=2)
+            #
+            # contours, _ = cv2.findContours(image=threshhold_delta_frame.copy(), mode=cv2.RETR_EXTERNAL,
+            #                                method=cv2.CHAIN_APPROX_SIMPLE)
 
-            # smooth delta
-            threshhold_delta_frame = cv2.dilate(src=threshhold_delta_frame, kernel=None, iterations=2)
 
-            contours, _ = cv2.findContours(image=threshhold_delta_frame.copy(), mode=cv2.RETR_EXTERNAL,
-                                           method=cv2.CHAIN_APPROX_SIMPLE)
-
-            # when motion detected
-            # draw countour around moving objects
-            motion_detected, self.motion_start, self.background_same_motion_start_time = self.__draw_countours(contours,
-                                                                                                               frame,
-                                                                                                               self.motion_start,
-                                                                                                               self.background_same_motion_start_time)
 
             # check if motion stopped
             if not motion_detected and not self.motion_start is None:
@@ -86,7 +101,7 @@ class VideoRecorder:
             self.background_same_motion_start_time, \
             self.motion_log, \
             self.motion_start,\
-            self.motion_frames = self.__motion_detected(
+            self.motion_frames = self.__add_motion_frame(
                 motion_detected,
                 frame,
                 self.motion_start,
@@ -108,6 +123,15 @@ class VideoRecorder:
         # save log to file
         self.__finalize_recording(self.motion_log, self.video)
 
+
+    def __get_gray_gaussian_blur_frame(self, frame):
+        gray_frame = cv2.cvtColor(src=frame, code=cv2.COLOR_RGB2GRAY)
+        gray_frame = cv2.GaussianBlur(src=gray_frame, ksize=(21, 21), sigmaX=0)
+        return gray_frame
+
+    def __get_next_cadre(self):
+        pass
+
     def __stop_check(self, motion_log, motion_start, motion_frames):
         key = cv2.waitKey(1)
         if key == ord('q'):
@@ -120,18 +144,19 @@ class VideoRecorder:
             return True, motion_log, motion_start, motion_frames
         return False, motion_log, motion_start, motion_frames
 
-    def __motion_detected(self,
-                          motion_detected,
-                          frame,
-                          motion_start,
-                          motion_frames,
-                          background_frame,
-                          background_same_motion_start_time,
-                          motion_log):
+    def __add_motion_frame(self,
+                           motion_detected,
+                           frame,
+                           motion_start,
+                           motion_frames,
+                           background_frame,
+                           background_same_motion_start_time,
+                           motion_log):
         if motion_detected:
             self.motion_frames.append(frame)
 
             # check if motion is fake, like background changed
+            #TODO
 
             # update background frame with it
             # if movement is 5sec, compare this frame with first moving frame
@@ -161,19 +186,35 @@ class VideoRecorder:
                motion_start, \
                motion_frames
 
-    def __draw_countours(self, contours, frame, motion_start, background_same_motion_start_time):
+
+    def __draw_countours(self, frame, gray_frame, motion_start, background_same_motion_start_time, background_frame):
+
         motion_detected = False
+
+        delta_frame = cv2.absdiff(background_frame, gray_frame)
+
+        _, threshhold_delta_frame = cv2.threshold(src=delta_frame, thresh=30, maxval=25,
+                                                  type=cv2.THRESH_BINARY)
+
+        # smooth delta
+        threshhold_delta_frame = cv2.dilate(src=threshhold_delta_frame, kernel=None, iterations=2)
+
+        contours, _ = cv2.findContours(image=threshhold_delta_frame.copy(), mode=cv2.RETR_EXTERNAL,
+                                       method=cv2.CHAIN_APPROX_SIMPLE)
+
+
+
         for contour in contours:
             if cv2.contourArea(contour) < 10000:
                 continue
             # check if motion started
             if motion_start is None:
                 motion_start = datetime.datetime.now()
-            background_same_motion_start_time = self.motion_start
+            background_same_motion_start_time = motion_start
             motion_detected = True
             (x, y, w, h) = cv2.boundingRect(contour)
             cv2.rectangle(img=frame, pt1=(x, y), pt2=(x + w, y + h), color=(0, 255, 0), thickness=3)
-        return motion_detected, motion_start, background_same_motion_start_time
+        return motion_detected, motion_start, background_same_motion_start_time, delta_frame,threshhold_delta_frame
 
     def __show_videos(self, gray_frame, delta_frame, threshhold_delta_frame, frame):
         cv2.imshow("Video", gray_frame)
